@@ -1,15 +1,15 @@
-function build_action_list!(total::Vector{Vector{P}}, N::Int, save::Vector{P}, A::Vector{P}) where {P}
-    if N == 0
-        push!(total, save)
-        return
-    end
-    for a ∈ A
-        save_cp = push!(copy(save), a)
-        build_action_list!(total, N - 1, save_cp, A)
-    end
-end
+# function build_action_list!(total::Vector{Vector{P}}, N::Int, save::Vector{P}, A::Vector{P}) where {P}
+#     if N == 0
+#         push!(total, save)
+#         return
+#     end
+#     for a ∈ A
+#         save_cp = push!(copy(save), a)
+#         build_action_list!(total, N - 1, save_cp, A)
+#     end
+# end
 
-function cantor_kantorovich(m1::M, m2::M; N = 3, γ = 0.5, α = 0.5) where {T, P, M <: MDP{T, P}}
+function cantor_kantorovich(m1::M, m2::M, policy::Dict{Int, P}; N = 3) where {T, P, M <: MDP{T, P}}
     S = MTNSExperiments.states(m1)
     A = actions(m1)
     if !issetequal(S, MTNSExperiments.states(m2)) || !issetequal(A, actions(m2))
@@ -21,67 +21,37 @@ function cantor_kantorovich(m1::M, m2::M; N = 3, γ = 0.5, α = 0.5) where {T, P
     function ck_rec(
         k::Int,
         p1::Float64, 
-        p2::Float64, 
+        p2::Float64,
         r::Float64,
-        w::Vector{Int}, 
-        a_list::Vector{P}
+        w::Vector{Int}
     )
         if k == N
-            return 2 * min(p1, p2), 0.
+            return 2 * min(p1, p2)
         end
-
-        ####
-        rew1 = reward(m1, w[end], a_list[k])
-        rew2 = reward(m2, w[end], a_list[k])
-        rew_here = γ^(k-1) * p1 * p2 * abs(rew1 - rew2)
-        ### Attention maybe to change w[end] is a Int = particular case
-
         sum = 0.
-        sum_rew = 0.
         for s ∈ S
-            p1_new = p1 * T1[a_list[k]][w[end], stateindex(m1, s)]
-            p2_new = p2 * T2[a_list[k]][w[end], stateindex(m2, s)] # m1 or m2 shouldn't change anything here    
+            a = policy[w[end]]
+            p1_new = p1 * T1[a][w[end], stateindex(m1, s)]
+            p2_new = p2 * T2[a][w[end], stateindex(m2, s)] # m1 or m2 shouldn't change anything here    
             r_new = min(p1_new, p2_new)
             if r_new != 0
-                inc, rew = ck_rec(k + 1, p1_new, p2_new, r_new, push!(copy(w), stateindex(m1, s)), a_list)
-                sum += inc
-                sum_rew += rew
+                sum += ck_rec(k + 1, p1_new, p2_new, r_new, push!(copy(w), stateindex(m1, s)))
             end
         end
-
-        return r + 0.5 * sum, sum_rew + rew_here
+        return r + 0.5 * sum
     end
 
-    a_list_list = Vector{Vector{P}}()
-    build_action_list!(a_list_list, N - 1, Vector{P}(), [a for a ∈ A])
-    
-    best_cand = -1.
-    best_rew = -1.
-
-    for a_list ∈ a_list_list
-        S_rest = 0.
-        rew_rest = 0.
-        for s ∈ S
-            μ1 = pdf(initialstate(m1), s)
-            μ2 = pdf(initialstate(m2), s)  
-            r = min(μ1, μ2)
-            if r != 0
-                res, rew = ck_rec(1, μ1, μ2, r, [stateindex(m1, s)], a_list)
-                S_rest += res
-                rew_rest += rew
-            end
+    S_rest = 0.
+    for s ∈ S
+        μ1 = pdf(initialstate(m1), s)
+        μ2 = pdf(initialstate(m2), s)  
+        r = min(μ1, μ2)
+        if r != 0
+            S_rest += ck_rec(1, μ1, μ2, r, [stateindex(m1, s)])
         end
-        cand = 0.5 - 0.25 * S_rest
-        if cand > best_cand
-            best_rew = rew_rest
-            best_cand = cand
-        end    
     end
 
-    println("Dynamics   : $best_cand")
-    println("Rewards    : $best_rew")
-
-    return α * best_cand + (1 - α) * best_rew
+    return 0.5 - 0.25 * S_rest
 end
 
 

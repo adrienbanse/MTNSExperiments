@@ -1,4 +1,4 @@
-function TabularTDLearning.solve(solver::QLearningSolver, mdp::MDP)
+function TabularTDLearning.solve(solver::QLearningSolver, mdp::MDP; past_policy = nothing, ψ = 1, v = 0.95)
     (;rng,exploration_policy) = solver
     γ = discount(mdp)
     Q = if isnothing(solver.Q_vals)
@@ -16,14 +16,22 @@ function TabularTDLearning.solve(solver::QLearningSolver, mdp::MDP)
     for i = 1:solver.n_episodes
         s = rand(rng, initialstate(mdp))
         t = 0
+
+        ψt = ψ
         while !isterminal(mdp, s) && t < solver.max_episode_length
-            a = action(exploration_policy, on_policy, k, s)
+            a = if !isnothing(past_policy) && rand() <= ψt
+                action(past_policy, s)
+            else
+                action(exploration_policy, on_policy, k, s)
+            end
             k += 1
             sp, r = @gen(:sp, :r)(mdp, s, a, rng)
             si = stateindex(mdp, s)
             ai = actionindex(mdp, a)
             spi = stateindex(mdp, sp)
             Q[si, ai] += solver.learning_rate * (r + γ * maximum(@view(Q[spi, :])) - Q[si,ai])
+
+            ψt *= v
             s = sp
             t += 1
         end
