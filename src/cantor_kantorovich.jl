@@ -1,14 +1,3 @@
-# function build_action_list!(total::Vector{Vector{P}}, N::Int, save::Vector{P}, A::Vector{P}) where {P}
-#     if N == 0
-#         push!(total, save)
-#         return
-#     end
-#     for a ∈ A
-#         save_cp = push!(copy(save), a)
-#         build_action_list!(total, N - 1, save_cp, A)
-#     end
-# end
-
 function cantor_kantorovich(m1::M, m2::M, policy::Dict{Int, P}; N = 3) where {T, P, M <: MDP{T, P}}
     S = MTNSExperiments.states(m1)
     A = actions(m1)

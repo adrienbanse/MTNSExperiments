@@ -28,15 +28,16 @@ function evaluate(mdp, solver, policy)
     return r_tot / solver.n_eval_traj
 end
 
-ε = 0.1
+ε = 0.5
 learning_rate = 0.01
-n_episodes_conv = 100000
-n_episodes_short = 10000
-max_episode_length = 100 
+n_episodes_conv = 4000
+n_episodes_short = n_episodes_conv # maybe change
+max_episode_length = 100
 eval_every = 100
-n_eval_traj = 1000
+n_eval_traj = 10000
 
 target = SimpleGridWorld(rewards = Dict(GWPos(4, 4) => 10.), tprob = 0.5)
+
 # solve target
 exppolicy_target = EpsGreedyPolicy(target, ε)
 solver_target = QLearningSolver(
@@ -46,19 +47,21 @@ solver_target = QLearningSolver(
     max_episode_length = max_episode_length, 
     eval_every = eval_every, 
     n_eval_traj = n_eval_traj,
-    verbose = false
+    verbose = true
 )
-policy_target, _ = solve(solver_target, target)
+policy_target, rewards_target = solve(solver_target, target)
 println("(REF) Target learned")
-reward_target = evaluate(target, solver_target, policy_target)
-println("(REF) Reward = $reward_target")
+# reward_target = evaluate(target, solver_target, policy_target)
+println("(REF) Initial reward = $(rewards_target[1])")
+initial = rewards_target[1]
 
 n_sources = 100
 couples = []
 for k = 1:n_sources
-    goal = GWPos(rand(1:target.size[1]), rand(1:target.size[2]))
     tprob = rand()
-    source = SimpleGridWorld(rewards = Dict(goal => 10.), tprob = 0.5)
+    low = tprob < 0.5 ? true : false
+
+    source = SimpleGridWorld(tprob = tprob, rewards = Dict(GWPos(4, 4) => 10.))
 
     # solve source
     exppolicy_source = EpsGreedyPolicy(source, ε)
@@ -82,29 +85,28 @@ for k = 1:n_sources
     end
     d = cantor_kantorovich(source, target, π_source; N = 8)
     println("($k/$n_sources) Distance computed d = $d")
-    
-    # # solve target TL
-    # solver_target_TL = deepcopy(solver_target)
-    # solver_target_TL.Q_vals = Q_save
-    # policy_target_TL, _ = solve(solver_target_TL, target)
-    # println("($k/$n_sources) Target learned with TL")
-    # reward_target_TL = evaluate(target, solver_target_TL, policy_target_TL)
-    # println("($k/$n_sources) Reward = $reward_target_TL")
-    # println("($k/$n_sources) Δ = $(reward_target_TL - reward_target)")
 
     # reward on target?
-    policy_target_TL, _ = solve(solver_target, target; past_policy = policy_source)
+    solver_target_TL = deepcopy(solver_target)
+    solver_target_TL.Q_vals = Q_save
+    policy_target_TL, rewards_target_TL = solve(solver_target_TL, target)
     println("($k/$n_sources) Target learned with TL")
-    reward_target_TL = evaluate(target, solver_source, policy_source)
-    println("($k/$n_sources) Reward = $reward_target_TL")
-    push!(couples, (d, reward_target_TL))
+    println("($k/$n_sources) Initial reward = $(rewards_target_TL[1])")
+
+    jumpstart = rewards_target_TL[1] - initial
+    push!(couples, (d, jumpstart, low))
+    println("($k/$n_sources) !Jumpstart! = $(jumpstart)")
 end
 
 using Plots
-p = scatter(legend = false)
-for c ∈ couples 
-    scatter!(p, c)
-end
+p = scatter()
+xlabel!("\$\\mathbf{d}(M_{T}, M_{S, i})\$")
+ylabel!("Jumpstart reward")
+c_green = [(d, j) for (d, j, l) ∈ couples if l]
+c_red = [(d, j) for (d, j, l) ∈ couples if !l]
+
+scatter!(p, c_green, color = "green", label = "\$\\delta < 1/2\$")
+scatter!(p, c_red, color = "red", label = "\$\\delta \\geq 1/2\$")
 display(p)
 
 end # module MTNSExperiments
